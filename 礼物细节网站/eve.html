@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EVE 3D Romantic Gift Box & Love Letter</title>
+    <!-- Tailwind CSS 用于极简全屏布局 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入高奢艺术字体 -->
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Noto+Serif+SC:wght@600;900&display=swap" rel="stylesheet">
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #fcf8f2;
+            font-family: 'Playfair Display', 'Noto Serif SC', serif;
+        }
+        /* 加载过渡动画 */
+        #loader {
+            background-color: #faf5ed;
+            transition: opacity 1.2s cubic-bezier(0.25, 1, 0.5, 1);
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        /* 浪漫高奢半透明提示面板 */
+        .romantic-panel {
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(244, 63, 94, 0.25);
+            background: rgba(255, 245, 245, 0.7);
+            box-shadow: 0 10px 30px rgba(244, 63, 94, 0.08);
+            pointer-events: none;
+            user-select: none;
+        }
+    </style>
+</head>
+<body class="relative w-full h-full select-none">
+
+    <!-- 极简粉金奢华加载层 -->
+    <div id="loader" class="fixed inset-0 z-50 flex flex-col items-center justify-center">
+        <div class="relative w-16 h-16 flex items-center justify-center">
+            <div class="absolute inset-0 border-t-2 border-[#e07a7a] rounded-full animate-spin"></div>
+            <span class="text-xs text-[#b06a6a]">❤</span>
+        </div>
+        <h1 class="text-sm uppercase tracking-[0.4em] text-[#b06a6a] mt-6 font-semibold">EVE Romantic Box</h1>
+        <p class="text-[10px] uppercase tracking-[0.2em] text-[#c7a9a9] mt-2">Preparing Your Love Story...</p>
+    </div>
+
+    <!-- 3D 渲染容器 -->
+    <div id="canvas-container" class="w-full h-full cursor-grab active:cursor-grabbing"></div>
+
+    <!-- 左上角高奢标牌 -->
+    <div class="absolute top-8 left-8 pointer-events-none flex flex-col">
+        <span class="text-2xl font-light tracking-[0.3em] text-[#5c4040]">EVE</span>
+        <span class="text-[9px] uppercase tracking-[0.6em] text-[#b58a8a] -mt-1">Mon Amour Edition</span>
+    </div>
+
+    <!-- 浪漫氛围底部操作指引（自适应移动端，并带有粉色浪漫闪烁效果） -->
+    <div id="interaction-tip" class="absolute bottom-10 left-1/2 -translate-x-1/2 romantic-panel px-6 py-3.5 rounded-full flex items-center space-x-3 text-xs tracking-[0.15em] text-[#8c4f4f] transition-opacity duration-1000 shadow-md">
+        <svg class="w-4 h-4 text-[#e05a5a] animate-pulse" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd"></path>
+        </svg>
+        <span class="font-medium text-center">轻触精美礼盒开箱，再次点击信封放大大开情书 🌸</span>
+    </div>
+
+    <!-- 引入 3D 所需核心库 (Three.js, OrbitControls, GSAP 动效库) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+
+    <script>
+        // --- 1. 初始化变量与状态控制 ---
+        let scene, camera, renderer, controls;
+        let mainBox, lidGroup, baseGroup;
+        let cocoons = [];
+        let loveParticles;
+        let envelope;
+        let isOpened = false;
+        let isZoomed = false;
+        let isAnimating = false;
+        
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        // --- 2. 包装盒高清晰度矢量贴图绘制 ---
+        function createProductTexture(face) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1024;
+            canvas.height = 1024;
+            const ctx = canvas.getContext('2d');
+
+            // 绘制精致的香槟浅金色底色
+            ctx.fillStyle = '#faf6ed';
+            ctx.fillRect(0, 0, 1024, 1024);
+
+            const mainGrad = ctx.createLinearGradient(0, 0, 1024, 1024);
+            mainGrad.addColorStop(0, '#ffffff');
+            mainGrad.addColorStop(0.5, '#fbf3e3');
+            mainGrad.addColorStop(1, '#ebdcb9');
+            ctx.fillStyle = mainGrad;
+            ctx.fillRect(0, 0, 1024, 1024);
+
+            // 丝滑优雅的金粉线条
+            ctx.save();
+            ctx.strokeStyle = 'rgba(224, 122, 122, 0.22)';
+            ctx.lineWidth = 14;
+            ctx.beginPath();
+            ctx.moveTo(-100, 300);
+            ctx.bezierCurveTo(300, 100, 700, 900, 1120, 700);
+            ctx.stroke();
+            ctx.restore();
+
+            if (face === 'front') {
+                drawGoddessSilhouette(ctx);
+                drawExclusiveSeal(ctx);
+
+                ctx.fillStyle = '#5c4040';
+                ctx.font = '55px "Playfair Display", serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('シルクプロテイン', 512, 170);
+
+                ctx.fillStyle = '#a67373';
+                ctx.font = 'italic 25px "Playfair Display", serif';
+                ctx.fillText('Special Romantic Selection  •  EVE', 512, 225);
+
+                ctx.textAlign = 'left';
+                ctx.fillStyle = '#bd8f8f';
+                ctx.font = 'bold 24px sans-serif';
+                ctx.fillText('肌に最も優しい愛を', 100, 520);
+                ctx.fillText('特別な君だけに捧ぐ', 100, 565);
+
+                // 金红色底座条幅
+                ctx.fillStyle = '#db8888';
+                ctx.fillRect(80, 760, 864, 150);
+                
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 36px "Noto Serif SC", serif';
+                ctx.fillText('「永久の愛」 360mm プレミアム', 130, 825);
+                ctx.font = '24px sans-serif';
+                ctx.fillText('桑紙のぬくもりを君に', 130, 875);
+            } else if (face === 'side') {
+                ctx.fillStyle = '#6e4444';
+                ctx.font = 'italic 30px "Playfair Display", serif';
+                ctx.fillText('EVE ROMANTIC AESTHETICS', 100, 180);
+                ctx.fillStyle = '#db9c9c';
+                ctx.fillRect(100, 210, 400, 2);
+
+                const features = ['100% 极致纯净天然桑蚕丝', '温润丝滑，呵护最脆弱的时刻', '纳米级微孔，轻盈透气如呼吸', '将每一缕温柔，化作极致爱意'];
+                features.forEach((f, i) => {
+                    ctx.font = 'bold 26px "Noto Serif SC", serif';
+                    ctx.fillStyle = '#8f5c5c';
+                    ctx.fillText('• ' + f, 120, 310 + i * 110);
+                });
+            }
+
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        // 绘制品牌标志性的女神剪影
+        function drawGoddessSilhouette(ctx) {
+            ctx.save();
+            ctx.translate(512, 490);
+            ctx.scale(1.8, 1.8);
+
+            const shadowGrad = ctx.createRadialGradient(0, 0, 5, 0, 0, 140);
+            shadowGrad.addColorStop(0, 'rgba(250, 210, 210, 0.65)');
+            shadowGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+            ctx.fillStyle = shadowGrad;
+            ctx.beginPath();
+            ctx.arc(0, 0, 140, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.strokeStyle = 'rgba(143, 92, 92, 0.75)';
+            ctx.lineWidth = 1.8;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
+            ctx.beginPath();
+            ctx.moveTo(-50, -50);
+            ctx.bezierCurveTo(-50, -60, -45, -70, -35, -75);
+            ctx.bezierCurveTo(-30, -77, -28, -82, -22, -78);
+            ctx.bezierCurveTo(-15, -74, -16, -65, -22, -63);
+            ctx.bezierCurveTo(-26, -61, -21, -55, -28, -52);
+            ctx.bezierCurveTo(-35, -49, -31, -41, -37, -39);
+            ctx.bezierCurveTo(-43, -35, -50, -25, -52, -5);
+
+            ctx.moveTo(-50, -50);
+            ctx.bezierCurveTo(-62, -45, -70, -60, -66, -72);
+            ctx.bezierCurveTo(-62, -84, -42, -92, -31, -88);
+            ctx.bezierCurveTo(-20, -84, -12, -88, -16, -100);
+            ctx.bezierCurveTo(-24, -112, -48, -116, -60, -104);
+            ctx.bezierCurveTo(-72, -92, -80, -72, -76, -56);
+
+            ctx.moveTo(-40, -69);
+            ctx.bezierCurveTo(-38, -67, -34, -67, -32, -69);
+
+            ctx.moveTo(-52, -5);
+            ctx.bezierCurveTo(-60, 20, -80, 45, -80, 70);
+            ctx.moveTo(-36, -17);
+            ctx.bezierCurveTo(-28, 5, 5, 25, 20, 70);
+
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        // 绘制专属情书红粉印章
+        function drawExclusiveSeal(ctx) {
+            ctx.save();
+            ctx.translate(730, 630);
+
+            ctx.beginPath();
+            ctx.arc(0, 0, 85, 0, Math.PI * 2);
+            ctx.fillStyle = '#e35f74';
+            ctx.fill();
+
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2.5;
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            ctx.arc(0, 0, 75, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.fillStyle = '#ffd700';
+            ctx.beginPath();
+            ctx.moveTo(-40, 72); ctx.lineTo(-55, 110); ctx.lineTo(-20, 98); ctx.lineTo(-8, 75);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(40, 72); ctx.lineTo(55, 110); ctx.lineTo(20, 98); ctx.lineTo(8, 75);
+            ctx.fill();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.font = 'bold 20px sans-serif';
+            ctx.fillText('EXCLUSIVE', 0, -28);
+
+            ctx.font = 'bold 36px "Playfair Display", serif';
+            ctx.fillText('AMOUR', 0, 6);
+
+            ctx.font = '16px sans-serif';
+            ctx.fillText('愛の特別な絆', 0, 38);
+
+            ctx.restore();
+        }
+
+        // --- 3. 极其浪漫浪漫信封与情书贴图绘制系统 ---
+        // 绘制信封背面：富丽堂皇的巴洛克金边、玫瑰粉底、以及黄金火漆印章
+        function createEnvelopeCoverTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1024;
+            canvas.height = 768;
+            const ctx = canvas.getContext('2d');
+
+            // 柔美高贵的渐变玫瑰粉底色
+            const bgGrad = ctx.createLinearGradient(0, 0, 1024, 768);
+            bgGrad.addColorStop(0, '#f2bfbf'); // 温柔暖粉
+            bgGrad.addColorStop(0.5, '#fae1e1'); // 珠光粉
+            bgGrad.addColorStop(1, '#e89e9e'); // 丝绒红粉
+            ctx.fillStyle = bgGrad;
+            ctx.fillRect(0, 0, 1024, 768);
+
+            // 绘制极具艺术感的 24K 黄金欧式藤蔓与星芒花边
+            ctx.save();
+            ctx.strokeStyle = '#d4af37'; // 亮黄金色
+            ctx.lineWidth = 4;
+            ctx.strokeRect(30, 30, 964, 708);
+            ctx.lineWidth = 1.5;
+            ctx.strokeRect(40, 40, 944, 688);
+
+            // 四角华丽心形卷曲叶片纹样
+            const corners = [
+                {x: 65, y: 65, dx: 70, dy: 70},
+                {x: 959, y: 65, dx: -70, dy: 70},
+                {x: 65, y: 703, dx: 70, dy: -70},
+                {x: 959, y: 703, dx: -70, dy: -70}
+            ];
+            corners.forEach(c => {
+                ctx.beginPath();
+                ctx.moveTo(c.x, c.y);
+                ctx.bezierCurveTo(c.x + c.dx, c.y, c.x, c.y + c.dy, c.x + c.dx, c.y + c.dy);
+                ctx.stroke();
+
+                ctx.fillStyle = '#ffd700';
+                ctx.beginPath();
+                ctx.arc(c.x + c.dx * 0.4, c.y + c.dy * 0.4, 4, 0, Math.PI*2);
+                ctx.fill();
+            });
+            ctx.restore();
+
+            // 信封折痕线（高仿真物理立体感）
+            ctx.strokeStyle = 'rgba(122, 59, 59, 0.18)';
+            ctx.lineWidth = 3.5;
+            ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(512, 384); ctx.lineTo(1024, 0); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(0, 768); ctx.lineTo(512, 384); ctx.lineTo(1024, 768); ctx.stroke();
+
+            // 黄金浮雕心形红宝石火漆印章
+            ctx.save();
+            ctx.translate(512, 384);
+            
+            // 逼真的立体蜡印阴影
+            ctx.shadowColor = 'rgba(122, 29, 29, 0.45)';
+            ctx.shadowBlur = 25;
+            ctx.shadowOffsetY = 12;
+
+            // 火漆外圈蜡油
+            ctx.fillStyle = '#9c1c1c';
+            ctx.beginPath(); ctx.arc(0, 0, 75, 0, Math.PI * 2); ctx.fill();
+
+            // 手作蜡印的不规则偏心边缘效果
+            ctx.fillStyle = '#b32222';
+            ctx.beginPath(); ctx.arc(3, -2, 68, 0, Math.PI * 2); ctx.fill();
+
+            // 黄金圆框
+            ctx.shadowColor = 'transparent';
+            ctx.strokeStyle = '#e6c35c'; 
+            ctx.lineWidth = 4;
+            ctx.beginPath(); ctx.arc(3, -2, 54, 0, Math.PI * 2); ctx.stroke();
+
+            // 璀璨立体浮雕爱心
+            ctx.fillStyle = '#ffd700'; // 耀眼金心
+            ctx.font = '68px serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('❤', 3, 2);
+            ctx.restore();
+
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.anisotropy = 4;
+            return tex;
+        }
+
+        // 绘制极其醒目的情书信纸：暖调香槟粉、法式古典藤蔓、极致明亮的大号玫瑰红情诗
+        function createLetterTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1024;
+            canvas.height = 768;
+            const ctx = canvas.getContext('2d');
+
+            // 极致浪漫的淡粉色水洗羊皮纸背景
+            ctx.fillStyle = '#fff4f4';
+            ctx.fillRect(0, 0, 1024, 768);
+
+            // 精美绚丽的双层金色、玫瑰红皇家边框
+            ctx.strokeStyle = '#d4af37'; 
+            ctx.lineWidth = 8;
+            ctx.strokeRect(36, 36, 952, 696);
+            
+            ctx.strokeStyle = '#c93c4f'; 
+            ctx.lineWidth = 2.5;
+            ctx.strokeRect(52, 52, 920, 664);
+
+            // 渲染四个角落的法式手绘繁花与玫瑰金叶片
+            drawRomanticFlowers(ctx);
+
+            // 绘制情诗：使用超高对比度的玫瑰红，字形加粗、字号增大，绝对醒目清晰
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            const lines = [
+                "比起多喝热水，",
+                "我更想照顾你的每一个生理期，",
+                "和每一个时期"
+            ];
+
+            const startY = 320; 
+            const lineHeight = 110;
+
+            lines.forEach((line, index) => {
+                const py = startY + (index * lineHeight);
+                
+                // 1. 绘制温润高雅的黄金发光阴影层，让文字更加具有厚重高奢感
+                ctx.fillStyle = 'rgba(212, 175, 55, 0.4)';
+                ctx.font = '900 52px "Noto Serif SC", "STKaiti", "Georgia", serif';
+                ctx.fillText(line, 514, py + 2.5);
+
+                // 2. 绘制醒目热烈的玫瑰酒红主字体
+                ctx.fillStyle = '#8c1c2b';
+                ctx.fillText(line, 512, py);
+            });
+
+            // 底部优雅的浪漫花体签名
+            ctx.fillStyle = '#d4af37'; 
+            ctx.font = 'italic bold 30px "Playfair Display", serif';
+            ctx.fillText("Yours with all my heart", 512, 650);
+
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.anisotropy = 4;
+            return tex;
+        }
+
+        // 辅助方法：绘制古典手绘繁花
+        function drawRomanticFlowers(ctx) {
+            const flowerPositions = [
+                {x: 75, y: 75}, {x: 949, y: 75},
+                {x: 75, y: 693}, {x: 949, y: 693}
+            ];
+
+            flowerPositions.forEach(fp => {
+                // 手绘风绿叶
+                ctx.strokeStyle = '#5a8c62';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.arc(fp.x, fp.y, 22, 0, Math.PI * 0.5);
+                ctx.stroke();
+
+                // 玫瑰红花瓣
+                ctx.fillStyle = '#e05363';
+                for(let i = 0; i < 5; i++) {
+                    const angle = (i * Math.PI * 2) / 5;
+                    const hx = fp.x + Math.cos(angle) * 16;
+                    const hy = fp.y + Math.sin(angle) * 16;
+                    ctx.beginPath();
+                    ctx.arc(hx, hy, 12, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // 金色花蕊
+                ctx.fillStyle = '#fce251';
+                ctx.beginPath();
+                ctx.arc(fp.x, fp.y, 9, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        }
+
+
+        // --- 4. 3D 环境渲染核心逻辑 ---
+        function initScene() {
+            const container = document.getElementById('canvas-container');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xfcf8f2);
+            // 远景轻柔薄雾
+            scene.fog = new THREE.FogExp2(0xfcf8f2, 0.02);
+
+            camera = new THREE.PerspectiveCamera(38, width / height, 0.1, 100);
+            camera.position.set(0.2, 4.0, 10.5);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(width, height);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.05;
+            container.appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.minDistance = 3.5;
+            controls.maxDistance = 15;
+            controls.maxPolarAngle = Math.PI / 2 - 0.02;
+
+            setupRomanticLighting();
+            buildDecorations();
+
+            // 隐藏加载页
+            setTimeout(() => {
+                document.getElementById('loader').classList.add('opacity-0');
+                setTimeout(() => document.getElementById('loader').style.display = 'none', 1200);
+                
+                // 交互提示淡出
+                setTimeout(() => {
+                    const tip = document.getElementById('interaction-tip');
+                    if(tip) tip.style.opacity = '0';
+                }, 7000);
+            }, 600);
+
+            window.addEventListener('resize', onWindowResize);
+            container.addEventListener('click', onDocumentClick, false);
+
+            animate();
+        }
+
+        // 高级影院级浪漫照明
+        function setupRomanticLighting() {
+            const ambient = new THREE.AmbientLight(0xfff5f5, 1.0);
+            scene.add(ambient);
+
+            // 主暖阳粉金光
+            const sunLight = new THREE.DirectionalLight(0xfff0e8, 1.6);
+            sunLight.position.set(6, 10, 4);
+            sunLight.castShadow = true;
+            sunLight.shadow.mapSize.width = 2048;
+            sunLight.shadow.mapSize.height = 2048;
+            sunLight.shadow.bias = -0.0003;
+            scene.add(sunLight);
+
+            // 反方向粉嫩冷补光
+            const rimLight = new THREE.DirectionalLight(0xffeae0, 0.95);
+            rimLight.position.set(-6, 4, -6);
+            scene.add(rimLight);
+
+            // 底部轻柔反射蓝紫光
+            const blueFill = new THREE.DirectionalLight(0xe5ebf7, 0.4);
+            blueFill.position.set(-5, -2, 4);
+            scene.add(blueFill);
+        }
+
+        // 布置精美高级的陈列与道具
+        function buildDecorations() {
+            // A. 法式波浪起伏软桌布
+            const floorGeo = new THREE.PlaneGeometry(50, 50, 64, 64);
+            const pos = floorGeo.attributes.position;
+            for (let i = 0; i < pos.count; i++) {
+                const x = pos.getX(i);
+                const y = pos.getY(i);
+                const z = Math.sin(x * 0.4) * Math.cos(y * 0.4) * 0.12 + Math.sin(x * 0.1) * 0.15;
+                pos.setZ(i, z);
+            }
+            floorGeo.computeVertexNormals();
+
+            const floorMat = new THREE.MeshStandardMaterial({ color: 0xf5eee4, roughness: 0.92, metalness: 0.01 });
+            const floor = new THREE.Mesh(floorGeo, floorMat);
+            floor.rotation.x = -Math.PI / 2;
+            floor.position.y = -1.65;
+            floor.receiveShadow = true;
+            scene.add(floor);
+
+            // B. 原木奢华茶歇托盘
+            const trayGeo = new THREE.CylinderGeometry(2.3, 2.4, 0.16, 64);
+            const woodMat = new THREE.MeshStandardMaterial({ color: 0xcca887, roughness: 0.52, metalness: 0.04 });
+            const tray = new THREE.Mesh(trayGeo, woodMat);
+            tray.position.set(0.5, -1.5, 0);
+            tray.receiveShadow = true;
+            tray.castShadow = true;
+            scene.add(tray);
+
+            // C. 欧式大理石廊柱
+            const pedestalGroup = new THREE.Group();
+            pedestalGroup.position.set(-2.8, -1.5, -1.2);
+            scene.add(pedestalGroup);
+
+            const columnMat = new THREE.MeshStandardMaterial({ color: 0xfaf4eb, roughness: 0.72, metalness: 0.04 });
+            const pBase = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.18, 1.0), columnMat);
+            pBase.position.y = 0.09; pBase.castShadow = true; pedestalGroup.add(pBase);
+
+            const pRing = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.48, 0.12, 32), columnMat);
+            pRing.position.y = 0.24; pRing.castShadow = true; pedestalGroup.add(pRing);
+
+            const pShaft = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.36, 1.4, 32), columnMat);
+            pShaft.position.y = 1.0; pShaft.castShadow = true; pedestalGroup.add(pShaft);
+
+            const pCapital = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.16, 0.92), columnMat);
+            pCapital.position.y = 1.78; pCapital.castShadow = true; pedestalGroup.add(pCapital);
+
+            // D. 水晶透亮拱门雕塑
+            const crystalGeo = new THREE.TorusGeometry(0.8, 0.12, 32, 100, Math.PI * 1.05);
+            const crystalMat = new THREE.MeshPhysicalMaterial({
+                color: 0xffffff, transparent: true, opacity: 1.0, roughness: 0.02, metalness: 0.0,
+                transmission: 0.96, ior: 1.54, thickness: 0.8, clearcoat: 1.0, clearcoatRoughness: 0.02
+            });
+            const crystalArch = new THREE.Mesh(crystalGeo, crystalMat);
+            crystalArch.position.set(-2.8, 1.0, -1.2);
+            crystalArch.rotation.z = -Math.PI / 6; crystalArch.rotation.y = Math.PI / 4;
+            crystalArch.castShadow = true;
+            scene.add(crystalArch);
+
+            // E. 原木蚕茧盆
+            const bowlGroup = new THREE.Group();
+            bowlGroup.position.set(-1.8, -1.5, 1.8);
+            scene.add(bowlGroup);
+
+            const bowlGeo = new THREE.CylinderGeometry(1.0, 0.7, 0.28, 32);
+            const bowl = new THREE.Mesh(bowlGeo, woodMat);
+            bowl.castShadow = true; bowlGroup.add(bowl);
+
+            const bowlCocoons = [
+                {x: -0.2, y: 0.2, z: 0.1, rx: 0.2, rz: 0.4, s: 0.8},
+                {x: 0.3, y: 0.18, z: -0.2, rx: -0.5, rz: 0.8, s: 0.85},
+                {x: 0.1, y: 0.22, z: 0.3, rx: 0.9, rz: -0.1, s: 0.78}
+            ];
+
+            const cocoonGeo = new THREE.SphereGeometry(0.24, 32, 32);
+            cocoonGeo.scale(1, 1.55, 1);
+            const cocoonMat = new THREE.MeshStandardMaterial({ color: 0xfffaf5, roughness: 0.90 });
+
+            bowlCocoons.forEach(c => {
+                const mesh = new THREE.Mesh(cocoonGeo, cocoonMat);
+                mesh.position.set(c.x, c.y, c.z); mesh.rotation.set(c.rx, 0, c.rz); mesh.scale.set(c.s, c.s, c.s);
+                mesh.castShadow = true; bowlGroup.add(mesh); cocoons.push(mesh);
+            });
+
+            // F. 桌面陈列蚕茧
+            const floorCocoons = [
+                {x: 1.5, y: -1.56, z: 2.3, rx: 0.4, rz: 1.2, s: 0.95},
+                {x: -2.8, y: 0.44, z: -1.1, rx: 0.1, rz: -0.4, s: 0.8}
+            ];
+            floorCocoons.forEach(c => {
+                const mesh = new THREE.Mesh(cocoonGeo, cocoonMat);
+                mesh.position.set(c.x, c.y, c.z); mesh.rotation.set(c.rx, 0, c.rz); mesh.scale.set(c.s, c.s, c.s);
+                mesh.castShadow = true; scene.add(mesh); cocoons.push(mesh);
+            });
+
+            // G. 核心礼物包装盒
+            mainBox = new THREE.Group();
+            mainBox.position.set(0.5, -0.45, -0.2);
+            scene.add(mainBox);
+
+            baseGroup = new THREE.Group();
+            lidGroup = new THREE.Group();
+            mainBox.add(baseGroup);
+            mainBox.add(lidGroup);
+
+            const frontT = createProductTexture('front');
+            const sideT = createProductTexture('side');
+            const blankT = createProductTexture('blank');
+
+            const mFront = new THREE.MeshStandardMaterial({ map: frontT, roughness: 0.35, metalness: 0.08 });
+            const mSide = new THREE.MeshStandardMaterial({ map: sideT, roughness: 0.35, metalness: 0.08 });
+            const mBlank = new THREE.MeshStandardMaterial({ map: blankT, roughness: 0.35, metalness: 0.08 });
+
+            const boxMaterials = [mSide, mSide, mBlank, mBlank, mFront, mBlank];
+
+            const baseMesh = new THREE.Mesh(new THREE.BoxGeometry(2.0, 2.0, 2.0), boxMaterials);
+            baseMesh.position.y = -0.3; baseMesh.castShadow = true; baseMesh.receiveShadow = true;
+            baseGroup.add(baseMesh);
+
+            const lidMesh = new THREE.Mesh(new THREE.BoxGeometry(2.01, 0.4, 2.01), boxMaterials);
+            lidMesh.position.set(0, 0.2, 0); lidMesh.castShadow = true;
+            lidGroup.add(lidMesh);
+
+            // 完美的翻盖合叶关节控制组
+            lidGroup.position.set(0, 0.7, -1.0); 
+            lidMesh.position.set(0, 0.2, 1.0);   
+
+            // H. 初始化奢华情书信封
+            buildEnvelope();
+
+            // I. 飘动的心心星尘粒子
+            createLoveDust();
+        }
+
+        // --- 5. 信封立体精细建模 ---
+        function buildEnvelope() {
+            envelope = new THREE.Group();
+            envelope.name = "envelopeGroup";
+            // 初始时隐匿并放置在盒内
+            envelope.position.set(0, 0.4, 0);
+            envelope.rotation.set(-Math.PI / 2, 0, 0); 
+            envelope.visible = false;
+            mainBox.add(envelope);
+
+            // 信封实体 (宽1.6, 高1.2, 厚0.04)
+            const geometry = new THREE.BoxGeometry(1.6, 1.2, 0.04);
+
+            const letterTex = createLetterTexture();
+            const coverTex = createEnvelopeCoverTexture();
+            const mSide = new THREE.MeshStandardMaterial({ color: 0xfae1e1, roughness: 0.5 });
+            const mCover = new THREE.MeshStandardMaterial({ map: coverTex, roughness: 0.35 });
+            const mLetter = new THREE.MeshStandardMaterial({ map: letterTex, roughness: 0.35 });
+
+            // 材质映射：+X, -X, +Y, -Y, +Z(展开情书面), -Z(华丽火漆印章面)
+            const boxMaterials = [ mSide, mSide, mSide, mSide, mLetter, mCover ];
+
+            const mesh = new THREE.Mesh(geometry, boxMaterials);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            envelope.add(mesh);
+        }
+
+        // --- 6. 唯美浪漫星尘环境 ---
+        function createLoveDust() {
+            const particleCount = 60;
+            const geo = new THREE.BufferGeometry();
+            const positions = new Float32Array(particleCount * 3);
+            const data = [];
+
+            for (let i = 0; i < particleCount; i++) {
+                positions[i * 3] = (Math.random() - 0.5) * 8;
+                positions[i * 3 + 1] = Math.random() * 5 - 1.5;
+                positions[i * 3 + 2] = (Math.random() - 0.5) * 8;
+                data.push({
+                    speedY: Math.random() * 0.004 + 0.002,
+                    wiggleSpeed: Math.random() * 0.0015 + 0.001,
+                    wiggleAmp: Math.random() * 0.012 + 0.006
+                });
+            }
+
+            geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            // 浪漫微红色微发光星尘
+            const mat = new THREE.PointsMaterial({ 
+                color: 0xffc4c4, 
+                size: 0.15, 
+                transparent: true, 
+                opacity: 0.85, 
+                blending: THREE.AdditiveBlending 
+            });
+            loveParticles = new THREE.Points(geo, mat);
+            loveParticles.userData = { physics: data };
+            scene.add(loveParticles);
+        }
+
+        function animateDust() {
+            if (!loveParticles) return;
+            const positions = loveParticles.geometry.attributes.position.array;
+            const data = loveParticles.userData.physics;
+
+            for (let i = 0; i < data.length; i++) {
+                positions[i * 3 + 1] += data[i].speedY;
+                positions[i * 3] += Math.sin(Date.now() * data[i].wiggleSpeed) * data[i].wiggleAmp;
+                if (positions[i * 3 + 1] > 3.8) {
+                    positions[i * 3 + 1] = -1.5;
+                    positions[i * 3] = (Math.random() - 0.5) * 8;
+                }
+            }
+            loveParticles.geometry.attributes.position.needsUpdate = true;
+        }
+
+        // --- 7. 精密交互逻辑 (开箱 -> 飞跃翻转 -> 放回) ---
+        function onDocumentClick(event) {
+            event.preventDefault();
+
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+
+            // A. 如果已放大看情书，点击任何区域自动恢复
+            if (isZoomed) {
+                hideEnvelope();
+                return;
+            }
+
+            // B. 盒子已开：优先检测是否点中了信封进行查看
+            if (isOpened && envelope) {
+                const envIntersects = raycaster.intersectObjects(envelope.children, true);
+                if (envIntersects.length > 0) {
+                    zoomEnvelope();
+                    return;
+                }
+            }
+
+            // C. 基础状态：检测点击大盒子开合
+            const boxIntersects = raycaster.intersectObjects(baseGroup.children, true);
+            if (boxIntersects.length > 0) {
+                toggleBoxState();
+            }
+        }
+
+        // 开盖动效
+        function toggleBoxState() {
+            if (isAnimating || isZoomed) return;
+            isAnimating = true;
+            
+            if (!isOpened) {
+                gsap.to(lidGroup.rotation, { x: -Math.PI * 0.65, duration: 1.6, ease: "power3.out" });
+                envelope.visible = true;
+                
+                // 信封优雅缓缓漂浮上升
+                gsap.to(envelope.position, { 
+                    y: 0.8, 
+                    duration: 1.6, 
+                    ease: "power3.out",
+                    onComplete: () => { isAnimating = false; }
+                });
+                isOpened = true;
+            } else {
+                gsap.to(lidGroup.rotation, { x: 0, duration: 1.2, ease: "power3.inOut" });
+                gsap.to(envelope.position, { 
+                    y: 0.4, 
+                    duration: 1.2, 
+                    ease: "power3.inOut",
+                    onComplete: () => {
+                        envelope.visible = false;
+                        isAnimating = false;
+                    }
+                });
+                isOpened = false;
+            }
+        }
+
+        // 3D 飞入镜头翻转展阅情纸
+        function zoomEnvelope() {
+            if (isAnimating) return;
+            isAnimating = true;
+            isZoomed = true;
+            controls.enabled = false; // 展阅时锁定场景
+
+            // 附着回场景根节点，避免盒子本身的自转干扰
+            scene.attach(envelope);
+
+            // 计算完美的镜头前正对距离
+            const targetPos = new THREE.Vector3();
+            const camDir = new THREE.Vector3();
+            camera.getWorldDirection(camDir);
+            targetPos.copy(camera.position).addScaledVector(camDir, 2.3);
+
+            // 计算让情纸正面（+Z 轴）正面贴切镜头的旋转四元数
+            const dummy = new THREE.Object3D();
+            dummy.position.copy(targetPos);
+            dummy.lookAt(camera.position);
+            const targetQuaternion = dummy.quaternion.clone();
+
+            const startQuaternion = envelope.quaternion.clone();
+            const animObj = { progress: 0 };
+
+            // 平滑轨迹飞入并翻转
+            gsap.to(envelope.position, { x: targetPos.x, y: targetPos.y, z: targetPos.z, duration: 1.4, ease: "power2.out" });
+            gsap.to(animObj, {
+                progress: 1,
+                duration: 1.4,
+                ease: "power2.out",
+                onUpdate: () => {
+                    envelope.quaternion.copy(startQuaternion).slerp(targetQuaternion, animObj.progress);
+                },
+                onComplete: () => {
+                    isAnimating = false;
+                }
+            });
+        }
+
+        // 放回盒子中并盖上信封
+        function hideEnvelope() {
+            if (isAnimating) return;
+            isAnimating = true;
+            isZoomed = false;
+
+            // 归位到大盒子层级中
+            mainBox.attach(envelope);
+
+            const targetLocalPos = new THREE.Vector3(0, 0.8, 0);
+            const targetLocalEuler = new THREE.Euler(-Math.PI / 2, 0, 0);
+            const targetLocalQuaternion = new THREE.Quaternion().setFromEuler(targetLocalEuler);
+
+            const startQuaternion = envelope.quaternion.clone();
+            const animObj = { progress: 0 };
+
+            gsap.to(envelope.position, { x: targetLocalPos.x, y: targetLocalPos.y, z: targetLocalPos.z, duration: 1.2, ease: "power2.inOut" });
+            gsap.to(animObj, {
+                progress: 1,
+                duration: 1.2,
+                ease: "power2.inOut",
+                onUpdate: () => {
+                    envelope.quaternion.copy(startQuaternion).slerp(targetLocalQuaternion, animObj.progress);
+                },
+                onComplete: () => {
+                    controls.enabled = true; // 开启遥控游览
+                    isAnimating = false;
+                }
+            });
+        }
+
+        function onWindowResize() {
+            const container = document.getElementById('canvas-container');
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        }
+
+        // --- 8. 主帧循环 ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (controls) controls.update();
+            animateDust();
+
+            // 如果没有被放大阅读，礼物盒会进行高贵的慢速呼吸自转
+            if (mainBox && !isZoomed) {
+                const time = Date.now() * 0.0004;
+                mainBox.position.y = -0.45 + Math.sin(time) * 0.025;
+                mainBox.rotation.y = time * 0.025;
+            }
+
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
+            }
+        }
+
+        window.onload = function() {
+            initScene();
+        };
+    </script>
+</body>
+</html>

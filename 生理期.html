@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>小宝的专属空间 · 周期智能健康系统 ✨</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            background: linear-gradient(135deg, #fbf7f5 0%, #f5ebe6 50%, #eae3d5 100%);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+        .premium-card {
+            background: rgba(255, 255, 255, 0.75);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            box-shadow: 0 10px 30px -5px rgba(216, 67, 107, 0.05);
+        }
+        input[type="range"]::-webkit-slider-runnable-track {
+            background: rgba(226, 232, 240, 0.8);
+            border-radius: 9999px;
+            height: 6px;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            margin-top: -5px;
+            background-color: #d8436b;
+            border-radius: 9999px;
+            height: 16px;
+            width: 16px;
+            box-shadow: 0 2px 6px rgba(216, 67, 107, 0.3);
+            transition: transform 0.1s ease;
+        }
+        /* 日历特定阶段背景色 */
+        .phase-menstrual { background-color: #ffe4e6 !important; color: #9f1239 !important; font-weight: bold; border-radius: 12px; }
+        .phase-follicular { background-color: #dcfce7 !important; color: #166534 !important; font-weight: bold; border-radius: 12px; }
+        .phase-ovulatory { background-color: #fef3c7 !important; color: #92400e !important; font-weight: bold; border-radius: 12px; }
+        .phase-luteal { background-color: #dbeafe !important; color: #1e40af !important; font-weight: bold; border-radius: 12px; }
+        .day-selected { ring: 2px solid #d8436b; transform: scale(1.05); }
+    </style>
+</head>
+<body class="min-h-screen pb-16 text-slate-800">
+
+    <header class="max-w-md mx-auto pt-10 px-5 flex justify-between items-center">
+        <div>
+            <h1 class="text-2xl font-bold text-slate-900 tracking-tight">小宝的专属空间</h1>
+            <p class="text-xs text-rose-600 font-semibold mt-1 flex items-center gap-1.5">
+                <i class="fas fa-heart-pulse animate-pulse text-rose-500"></i> 
+                周期智能管理与专属健康对策
+            </p>
+        </div>
+        <div class="w-12 h-12 rounded-2xl border border-white bg-white/50 flex items-center justify-center text-xl shadow-sm backdrop-blur-md">
+            👧
+        </div>
+    </header>
+
+    <main class="max-w-md mx-auto px-4 mt-6 space-y-6">
+
+        <section class="premium-card rounded-3xl p-5 space-y-3">
+            <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <i class="fas fa-calendar-heart text-rose-500"></i> 主动同步生理期
+            </h3>
+            <div class="flex gap-3 items-center">
+                <div class="flex-1">
+                    <label class="block text-[11px] text-slate-400 font-bold uppercase mb-1">上次月经开始日期</label>
+                    <input type="date" id="manualPeriodDate" class="w-full bg-white/80 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-rose-400">
+                </div>
+                <button type="button" id="updatePeriodBtn" class="bg-rose-500 hover:bg-rose-600 text-white font-bold text-xs px-4 py-2.5 rounded-xl mt-5 shadow-sm transition-all cursor-pointer">
+                    生成日历
+                </button>
+            </div>
+        </section>
+
+        <section class="premium-card rounded-3xl p-6 text-center relative overflow-hidden">
+            <div class="absolute -right-6 -top-6 w-24 h-24 bg-rose-100 rounded-full blur-3xl opacity-60 pointer-events-none"></div>
+            <h3 class="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-4">今日生理状态预测</h3>
+            
+            <div class="relative w-44 h-44 mx-auto flex items-center justify-center">
+                <svg class="w-full h-full transform -rotate-90">
+                    <circle cx="88" cy="88" r="74" stroke="rgba(241, 245, 249, 0.9)" stroke-width="10" fill="transparent" />
+                    <circle id="cycleProgressCircle" cx="88" cy="88" r="74" stroke="#d8436b" stroke-width="10" fill="transparent" 
+                            stroke-dasharray="465" stroke-dashoffset="465" stroke-linecap="round" class="transition-all duration-1000 ease-out" />
+                </svg>
+                <div class="absolute text-center px-4 w-full">
+                    <span id="cycleStatusBadge" class="inline-block text-[11px] font-bold text-rose-700 bg-rose-50 px-3 py-0.5 rounded-full mb-1">等待输入...</span>
+                    <span id="cycleCountdown" class="block text-2xl font-black text-slate-900 tracking-tight">--</span>
+                    <span id="cycleTip" class="block text-[11px] text-slate-400 mt-1 leading-tight">请在上方选择日期生成</span>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4 mt-6 pt-4 border-t border-slate-100 text-left">
+                <div class="pl-2">
+                    <span class="text-[11px] text-slate-400 block font-medium">预测下次月经</span>
+                    <span id="nextPeriodDate" class="text-sm font-bold text-slate-800">--</span>
+                </div>
+                <div class="border-l border-slate-100 pl-4">
+                    <span class="text-[11px] text-slate-400 block font-medium">易孕排卵期</span>
+                    <span id="ovulationRange" class="text-sm font-bold text-amber-600">--</span>
+                </div>
+            </div>
+        </section>
+
+        <section id="adviceCard" class="premium-card rounded-3xl p-5 space-y-4 border-l-4 border-rose-500">
+            <div class="flex items-start gap-3">
+                <div class="w-8 h-8 rounded-xl bg-rose-50 flex items-center justify-center text-rose-500 flex-shrink-0">
+                    <i class="fa-solid fa-wand-magic-sparkles text-sm"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider" id="adviceCardTitle">今日专属健康调理策略</h4>
+                    <p id="phaseAdviceText" class="text-xs text-slate-700 font-medium leading-relaxed mt-1">请选择上方日期或点击下方日历查看对应日期的健康建议。</p>
+                </div>
+            </div>
+            <div id="symptomAdviceBox" class="bg-amber-50/70 border border-amber-100/80 rounded-xl p-3.5 flex gap-2.5 items-start hidden">
+                <span class="text-base text-amber-600 flex-shrink-0">⚠️</span>
+                <p id="symptomAdviceText" class="text-xs text-amber-800 leading-normal font-medium"></p>
+            </div>
+        </section>
+
+        <section class="premium-card rounded-3xl p-5 space-y-4">
+            <div class="flex justify-between items-center">
+                <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <i class="fas fa-calendar-days text-rose-500"></i> 本月周期智能日历
+                </h3>
+                <span id="calendarMonthLabel" class="text-xs font-bold text-slate-500 bg-white px-2 py-0.5 rounded-lg border border-slate-100">2026年6月</span>
+            </div>
+            
+            <div class="flex flex-wrap gap-2 text-[10px] justify-between pb-2 border-b border-slate-100/80">
+                <div class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded bg-rose-200 inline-block"></span> 经期</div>
+                <div class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded bg-green-200 inline-block"></span> 滤泡期</div>
+                <div class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded bg-amber-200 inline-block"></span> 排卵期</div>
+                <div class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded bg-blue-200 inline-block"></span> 黄体期</div>
+            </div>
+
+            <div>
+                <div class="grid grid-cols-7 gap-1 text-center text-[11px] font-bold text-slate-400 mb-2">
+                    <div>日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div>
+                </div>
+                <div id="calendarGrid" class="grid grid-cols-7 gap-1.5 text-center text-xs">
+                    </div>
+            </div>
+            <p class="text-[10px] text-slate-400 text-center">💡 点击日历上的任意日期，可查看该阶段贴心的健康对策哦</p>
+        </section>
+
+        <section class="premium-card rounded-3xl p-6 space-y-5">
+            <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <i class="fas fa-feather text-rose-500"></i> 今日身体与心情打卡
+            </h3>
+
+            <form id="recordForm" class="space-y-5" onsubmit="return false;">
+                <div class="flex items-center justify-between bg-white/50 p-4 rounded-2xl border border-slate-100 shadow-sm">
+                    <div>
+                        <span class="text-sm font-bold text-slate-800 block">今日正处于经期吗？</span>
+                        <span class="text-[11px] text-slate-400">若今天姨妈到访，请开启此开关</span>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="periodToggle" class="sr-only peer">
+                        <div class="w-11 h-6 bg-slate-200/80 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-500 shadow-inner"></div>
+                    </label>
+                </div>
+
+                <div class="space-y-2 bg-white/50 p-4 rounded-2xl border border-slate-100 shadow-sm">
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm font-bold text-slate-800">心情状态监测</span>
+                        <span id="moodText" class="text-xs text-rose-600 font-bold bg-white px-2.5 py-0.5 rounded-md shadow-sm border border-slate-100">😊 平静温和</span>
+                    </div>
+                    <div class="flex items-center gap-3 py-1">
+                        <span class="text-lg">😭</span>
+                        <input type="range" id="moodSlider" min="1" max="5" value="3" class="w-full h-2 appearance-none bg-transparent cursor-pointer">
+                        <span class="text-lg">🥳</span>
+                    </div>
+                </div>
+
+                <div class="space-y-2">
+                    <span class="text-[11px] font-bold text-slate-400 block tracking-wider uppercase">伴随身体小症状 (可多选)</span>
+                    <div class="flex flex-wrap gap-2 relative z-10" id="symptomContainer">
+                        <button type="button" data-val="小腹酸痛 😣" class="symptom-tag text-xs bg-white px-3.5 py-2 rounded-xl border border-slate-200/60 transition-all font-medium text-slate-700 hover:bg-slate-50 cursor-pointer block">小腹酸痛 😣</button>
+                        <button type="button" data-val="胸胀头痛 💆‍♀️" class="symptom-tag text-xs bg-white px-3.5 py-2 rounded-xl border border-slate-200/60 transition-all font-medium text-slate-700 hover:bg-slate-50 cursor-pointer block">胸胀头痛 💆‍♀️</button>
+                        <button type="button" data-val="长痘爆油 🌋" class="symptom-tag text-xs bg-white px-3.5 py-2 rounded-xl border border-slate-200/60 transition-all font-medium text-slate-700 hover:bg-slate-50 cursor-pointer block">长痘爆油 🌋</button>
+                        <button type="button" data-val="困倦乏力 🥱" class="symptom-tag text-xs bg-white px-3.5 py-2 rounded-xl border border-slate-200/60 transition-all font-medium text-slate-700 hover:bg-slate-50 cursor-pointer block">困倦乏力 🥱</button>
+                        <button type="button" data-val="水肿腹胀 🎈" class="symptom-tag text-xs bg-white px-3.5 py-2 rounded-xl border border-slate-200/60 transition-all font-medium text-slate-700 hover:bg-slate-50 cursor-pointer block">水肿腹胀 🎈</button>
+                    </div>
+                </div>
+
+                <button type="button" id="submitBtn" class="w-full bg-gradient-to-r from-rose-600 to-rose-500 text-white py-4 rounded-2xl font-bold shadow-lg shadow-rose-600/10 hover:opacity-95 active:scale-[0.99] transition-all text-sm cursor-pointer tracking-wider">
+                    存入云端甜蜜档案
+                </button>
+            </form>
+        </section>
+
+        <section class="premium-card rounded-3xl p-6">
+            <h3 class="text-sm font-bold text-slate-900 mb-4 flex items-center gap-2">
+                <i class="fas fa-chart-line text-rose-500"></i> 本月心情与生理期波动趋势
+            </h3>
+            <div class="w-full h-44">
+                <canvas id="trendChart"></canvas>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        const SUPABASE_URL = 'https://nkfubzmnbbfdebsvczcp.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_9eCdqddWRN0uh4yy_IDtWA_QHKzCnzJ';
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        let trendChartInstance = null;
+        let globalLastPeriodDate = null; // 全局存储最后一次生理期时间
+
+        const moodMap = {
+            1: { emoji: '😭', text: '极度崩溃' },
+            2: { emoji: '🥺', text: '情绪低落' },
+            3: { emoji: '😊', text: '平静温和' },
+            4: { emoji: '🥰', text: '心情甜蜜' },
+            5: { emoji: '🥳', text: '快乐起飞' }
+        };
+
+        const phaseHealthAdvice = {
+            menstrual: "【生理经期】荷尔蒙处于低谷。建议补充铁质红肉、黑木耳。适合进行温和阴瑜伽或散步，注意腹部保暖，切忌剧烈运动。",
+            follicular: "【冲刺滤泡期】雌激素逐步回升，新陈代谢旺盛。建议多摄入优质高蛋白与蔬菜。此时精力最佳，可以尝试抗阻跑步或健身拉伸。",
+            ovulatory: "【黄金排卵期】雌激素达到巅峰，体能与气色处于全月最佳。适宜安排高强度的 HIIT 训练。多补充富含纤维的西蓝花与浆果。",
+            luteal: "【调理黄体期】身体容易敏感水肿或焦虑。饮食上请务必低盐，可食用香蕉或黑巧克力补充镁元素，运动推荐温和的普拉提。"
+        };
+
+        const phaseNames = {
+            menstrual: "生理经期 🩸",
+            follicular: "元气滤泡期 🌱",
+            ovulatory: "黄金排卵期 ✨",
+            luteal: "调理黄体期 💆‍♀️"
+        };
+
+        const symptomHealthAdvice = {
+            "小腹酸痛 😣": "针对腹痛：建议饮用温热红糖姜茶，辅以暖宫贴进行局部热敷。轻度步行可促进血液循环，切忌生冷寒凉食物。",
+            "胸胀头痛 💆‍♀️": "针对胸胀/头痛：这是孕酮上升的正常反应。建议穿戴无钢圈内衣，多喝水，减少盐分摄入防止组织水肿。",
+            "长痘爆油 🌋": "针对长痘：皮脂腺分泌旺盛。饮食上要严格控糖、少吃乳制品。加强面部控油补水，切勿用手挤压。",
+            "困倦乏力 🥱": "针对乏力：身体在为你消耗能量。不要抗拒，建议今晚比平时早睡40分钟。多补充富含维生素C的水果。",
+            "水肿腹胀 🎈": "针对水肿腹胀：建议少食多餐，杜绝碳酸饮料。可以饮用茯苓红豆水或肉桂茶，帮助身体高效代谢排水。"
+        };
+
+        // 心情滑动条
+        const moodSlider = document.getElementById('moodSlider');
+        const moodText = document.getElementById('moodText');
+        moodSlider.addEventListener('input', (e) => {
+            const config = moodMap[e.target.value];
+            moodText.innerText = `${config.emoji} ${config.text}`;
+        });
+
+        // 伴随症状按钮选择
+        const tags = document.querySelectorAll('.symptom-tag');
+        tags.forEach(tag => {
+            tag.addEventListener('click', (e) => {
+                e.preventDefault();
+                tag.classList.toggle('bg-rose-600');
+                tag.classList.toggle('text-white');
+                tag.classList.toggle('border-transparent');
+                tag.classList.toggle('is-selected');
+                triggerDynamicSymptomAdvice();
+            });
+        });
+
+        function triggerDynamicSymptomAdvice() {
+            const selectedTags = document.querySelectorAll('.is-selected');
+            const adviceBox = document.getElementById('symptomAdviceBox');
+            const adviceText = document.getElementById('symptomAdviceText');
+
+            if (selectedTags.length > 0) {
+                adviceBox.classList.remove('hidden');
+                const latestVal = selectedTags[selectedTags.length - 1].getAttribute('data-val');
+                adviceText.innerText = symptomHealthAdvice[latestVal] || "注意保持规律作息和温暖饮食。";
+            } else {
+                adviceBox.classList.add('hidden');
+            }
+        }
+
+        function getLocalDateString() {
+            const date = new Date();
+            const offset = date.getTimezoneOffset();
+            const localDate = new Date(date.getTime() - (offset * 60 * 1000));
+            return localDate.toISOString().split('T')[0];
+        }
+
+        // 获取根据上一次经期计算出的任意日期的周期阶段
+        function getPhaseOfDate(targetDate, basePeriodDate) {
+            const base = new Date(basePeriodDate);
+            base.setHours(0,0,0,0);
+            const target = new Date(targetDate);
+            target.setHours(0,0,0,0);
+
+            const msDiff = target.getTime() - base.getTime();
+            const daysDiff = Math.floor(msDiff / (1000 * 60 * 60 * 24));
+            const currentCycleDay = ((daysDiff % 28) + 28) % 28; 
+
+            if (currentCycleDay >= 0 && currentCycleDay < 7) {
+                return 'menstrual';
+            } else if (currentCycleDay >= 12 && currentCycleDay <= 16) {
+                return 'ovulatory';
+            } else if (currentCycleDay >= 7 && currentCycleDay < 12) {
+                return 'follicular';
+            } else {
+                return 'luteal';
+            }
+        }
+
+        // 初始化/点击更新时计算大盘与日历
+        function processCycleCalculation(lastPeriodStart) {
+            if (!lastPeriodStart) return;
+            globalLastPeriodDate = lastPeriodStart;
+
+            const circle = document.getElementById('cycleProgressCircle');
+            const badge = document.getElementById('cycleStatusBadge');
+            const countdown = document.getElementById('cycleCountdown');
+            const tip = document.getElementById('cycleTip');
+            const phaseAdviceText = document.getElementById('phaseAdviceText');
+
+            const today = new Date();
+            today.setHours(0,0,0,0);
+            const baseDate = new Date(lastPeriodStart);
+            baseDate.setHours(0,0,0,0);
+
+            const msDiff = today.getTime() - baseDate.getTime();
+            const daysDiff = Math.floor(msDiff / (1000 * 60 * 60 * 24));
+            const currentCycleDay = ((daysDiff % 28) + 28) % 28; 
+
+            let currentPhaseKey = getPhaseOfDate(today, baseDate);
+            let stateName = phaseNames[currentPhaseKey];
+            let centralValue = "";
+            let bottomTip = "";
+            let dashOffset = 465;
+
+            if (currentPhaseKey === "menstrual") {
+                badge.className = "inline-block text-[11px] font-bold text-rose-700 bg-rose-50 px-3 py-0.5 rounded-full mb-1";
+                centralValue = `第 ${currentCycleDay + 1} 天`;
+                bottomTip = "多喝温热水，小腹注意避风保暖 ☕";
+                dashOffset = 465 - (465 * (currentCycleDay + 1) / 7);
+                if (!document.getElementById('periodToggle').dataset.userInteracted) {
+                    document.getElementById('periodToggle').checked = true;
+                }
+            } else if (currentPhaseKey === "ovulatory") {
+                badge.className = "inline-block text-[11px] font-bold text-amber-700 bg-amber-50 px-3 py-0.5 rounded-full mb-1";
+                centralValue = "代谢高峰";
+                bottomTip = "气色与创造力极佳，适合高效率工作 🏃‍♀️";
+                dashOffset = 210; 
+            } else if (currentPhaseKey === "follicular") {
+                badge.className = "inline-block text-[11px] font-bold text-emerald-700 bg-emerald-50 px-3 py-0.5 rounded-full mb-1";
+                const remainToOvul = 12 - currentCycleDay;
+                centralValue = `再续 ${remainToOvul} 天`;
+                bottomTip = "能量全速充满，开启阳光运动好时机 ☀️";
+                dashOffset = 465 - (465 * currentCycleDay / 28);
+            } else {
+                badge.className = "inline-block text-[11px] font-bold text-blue-700 bg-blue-50 px-3 py-0.5 rounded-full mb-1";
+                const nextArrival = 28 - currentCycleDay;
+                centralValue = `倒计 ${nextArrival} 天`;
+                bottomTip = "身体易产生疲倦感，保持情绪柔和 💆‍♀️";
+                dashOffset = 465 - (465 * currentCycleDay / 28);
+            }
+
+            circle.style.strokeDashoffset = dashOffset;
+            badge.innerText = stateName;
+            countdown.innerText = centralValue;
+            tip.innerText = bottomTip;
+            
+            // 设定默认今日卡片建议
+            document.getElementById('adviceCardTitle').innerText = "今日专属健康调理策略";
+            phaseAdviceText.innerText = phaseHealthAdvice[currentPhaseKey];
+
+            // 预测未来数据
+            const nextPeriodStart = new Date(baseDate);
+            nextPeriodStart.setDate(baseDate.getDate() + (daysDiff >= 0 ? (Math.floor(daysDiff / 28) + 1) * 28 : 0));
+            document.getElementById('nextPeriodDate').innerText = `${nextPeriodStart.getMonth() + 1}月${nextPeriodStart.getDate()}日`;
+
+            const ovulStart = new Date(nextPeriodStart);
+            ovulStart.setDate(ovulStart.getDate() - 14); 
+            const ovulEnd = new Date(ovulStart);
+            ovulEnd.setDate(ovulEnd.getDate() + 2);
+            ovulStart.setDate(ovulStart.getDate() - 2);
+            document.getElementById('ovulationRange').innerText = `${ovulStart.getMonth() + 1}.${ovulStart.getDate()} - ${ovulEnd.getDate()}日`;
+
+            // 渲染智能日历
+            renderCalendar(today.getFullYear(), today.getMonth(), lastPeriodStart);
+        }
+
+        // 渲染日历网格
+        function renderCalendar(year, month, basePeriodDate) {
+            const grid = document.getElementById('calendarGrid');
+            const label = document.getElementById('calendarMonthLabel');
+            grid.innerHTML = '';
+            
+            label.innerText = `${year}年${month + 1}月`;
+
+            const firstDayIndex = new Date(year, month, 1).getDay();
+            const totalDays = new Date(year, month + 1, 0).getDate();
+            const todayStr = getLocalDateString();
+
+            // 填充上个月的空白格子
+            for (let i = 0; i < firstDayIndex; i++) {
+                const emptyCell = document.createElement('div');
+                grid.appendChild(emptyCell);
+            }
+
+            // 生成每号的格子
+            for (let day = 1; day <= totalDays; day++) {
+                const cell = document.createElement('button');
+                cell.type = "button";
+                cell.innerText = day;
+                cell.className = "p-2 text-center rounded-xl font-semibold transition-all cursor-pointer hover:bg-slate-100/80 relative flex items-center justify-center h-9";
+
+                // 拼装当前格子的标准 YYYY-MM-DD 字符串
+                const currentStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                
+                // 计算当前格子的生理期阶段并着色
+                const phase = getPhaseOfDate(currentStr, basePeriodDate);
+                if (phase === 'menstrual') cell.classList.add('phase-menstrual');
+                if (phase === 'follicular') cell.classList.add('phase-follicular');
+                if (phase === 'ovulatory') cell.classList.add('phase-ovulatory');
+                if (phase === 'luteal') cell.classList.add('phase-luteal');
+
+                // 如果是今天，加一个小黑点或外框标识
+                if (currentStr === todayStr) {
+                    const dot = document.createElement('span');
+                    dot.className = "absolute bottom-0.5 w-1 h-1 bg-slate-900 rounded-full";
+                    cell.appendChild(dot);
+                }
+
+                // 给每个日期绑定点击事件来查看健康建议
+                cell.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    document.querySelectorAll('#calendarGrid button').forEach(b => b.classList.remove('day-selected'));
+                    cell.classList.add('day-selected');
+
+                    // 改变上方建议卡片的内容
+                    document.getElementById('adviceCardTitle').innerText = `${month + 1}月${day}日 (${phaseNames[phase]}) 专属对策`;
+                    document.getElementById('phaseAdviceText').innerText = phaseHealthAdvice[phase];
+                    
+                    // 滚动视图到建议卡片，方便小宝观看
+                    document.getElementById('adviceCard').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                });
+
+                grid.appendChild(cell);
+            }
+        }
+
+        // 主动绑定手动输入日期的按钮
+        document.getElementById('updatePeriodBtn').addEventListener('click', () => {
+            const dateInput = document.getElementById('manualPeriodDate').value;
+            if (!dateInput) {
+                alert('请先选择上一次月经来临的日期呀 🌸');
+                return;
+            }
+            processCycleCalculation(dateInput);
+        });
+
+        async function fetchAndRenderSpace() {
+            try {
+                const { data: logs, error } = await supabaseClient
+                    .from('daily_logs')
+                    .select('*')
+                    .order('log_date', { ascending: true })
+                    .limit(30);
+
+                if (error) throw error;
+
+                renderChart(logs || []);          
+                checkTodayFormState(logs || []);      
+
+                // 优先检查云端是否存在经期记录来激活日历
+                const periodDates = logs
+                    .filter(log => log.is_period)
+                    .map(log => log.log_date)
+                    .sort((a, b) => new Date(b) - new Date(a));
+
+                if (periodDates.length > 0) {
+                    document.getElementById('manualPeriodDate').value = periodDates[0];
+                    processCycleCalculation(periodDates[0]);
+                }
+            } catch (err) {
+                console.error('数据同步失败，进入安全预览模式:', err);
+                renderChart([]);
+            }
+        }
+
+        function checkTodayFormState(logs) {
+            const todayStr = getLocalDateString();
+            const currentRecord = logs.find(item => item.log_date === todayStr);
+
+            if (currentRecord) {
+                document.getElementById('periodToggle').checked = currentRecord.is_period;
+                moodSlider.value = currentRecord.mood_rating;
+                const config = moodMap[currentRecord.mood_rating];
+                moodText.innerText = `${config.emoji} ${config.text}`;
+
+                tags.forEach(tag => {
+                    if (currentRecord.symptoms && currentRecord.symptoms.includes(tag.getAttribute('data-val'))) {
+                        tag.classList.add('bg-rose-600', 'text-white', 'border-transparent', 'is-selected');
+                    } else {
+                        tag.classList.remove('bg-rose-600', 'text-white', 'border-transparent', 'is-selected');
+                    }
+                });
+                triggerDynamicSymptomAdvice();
+                document.getElementById('submitBtn').innerText = "修改今日甜蜜健康档案";
+            }
+        }
+
+        document.getElementById('periodToggle').addEventListener('change', () => {
+            document.getElementById('periodToggle').dataset.userInteracted = true;
+        });
+
+        function renderChart(logs) {
+            const recentLogs = logs.slice(-7); 
+            const labels = recentLogs.map(item => item.log_date.substring(5)); 
+            const datasetMood = recentLogs.map(item => item.mood_rating);
+            const pointColors = recentLogs.map(item => item.is_period ? '#d8436b' : '#ffffff');
+            const pointSizes = recentLogs.map(item => item.is_period ? 7 : 4);
+
+            const ctx = document.getElementById('trendChart').getContext('2d');
+            if (trendChartInstance) {
+                trendChartInstance.destroy(); 
+            }
+
+            trendChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels.length ? labels : ['暂无数据'],
+                    datasets: [{
+                        data: datasetMood.length ? datasetMood : [3],
+                        borderColor: '#d8436b',
+                        borderWidth: 2.5,
+                        pointBackgroundColor: pointColors,
+                        pointBorderColor: '#d8436b',
+                        pointHoverRadius: 8,
+                        pointRadius: pointSizes,
+                        tension: 0.4, 
+                        fill: false
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { 
+                            min: 1, 
+                            max: 5, 
+                            ticks: { 
+                                stepSize: 1, 
+                                callback: value => moodMap[value] ? moodMap[value].emoji : '' 
+                            },
+                            grid: { color: 'rgba(216, 67, 107, 0.04)' }
+                        },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
+        }
+
+        // 保存/同步到 Supabase
+        document.getElementById('submitBtn').addEventListener('click', async () => {
+            const btn = document.getElementById('submitBtn');
+            btn.disabled = true;
+            btn.innerText = "数据同步中...";
+
+            const todayStr = getLocalDateString();
+            const isPeriod = document.getElementById('periodToggle').checked;
+            const currentMood = parseInt(moodSlider.value);
+            
+            const selectedSymptoms = [];
+            document.querySelectorAll('.is-selected').forEach(el => {
+                selectedSymptoms.push(el.getAttribute('data-val'));
+            });
+
+            try {
+                const { error } = await supabaseClient
+                    .from('daily_logs')
+                    .upsert({
+                        log_date: todayStr,
+                        is_period: isPeriod,
+                        mood_rating: currentMood,
+                        symptoms: selectedSymptoms
+                    }, { onConflict: 'log_date' });
+
+                if (error) throw error;
+                alert('✨ 成功存入健康档案！');
+                await fetchAndRenderSpace();
+            } catch (error) {
+                alert('🔴 保存失败。请确保是通过本地服务器(如 Live Server)或 GitHub Pages 打开的网页。');
+                console.error(error);
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "存入云端甜蜜档案";
+            }
+        });
+
+        // 页面首次载入
+        fetchAndRenderSpace();
+    </script>
+</body>
+</html>
